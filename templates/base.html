@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Smart Helmet Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    {% block navbar %}
+    <div class="navbar">
+        <h2>Smart Helmet Monitoring System</h2>
+        <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+        <div class="nav-links">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('history') }}">History</a>
+            <a href="{{ url_for('add_helmet') }}">Add Helmet</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+            <button id="themeToggle" class="btn" title="Toggle theme">🌙</button>
+        </div>
+    </div>
+    {% endblock %}
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+    const navToggle = document.querySelector('.nav-toggle');
+    const navLinks = document.querySelector('.nav-links');
+    navToggle && navToggle.addEventListener('click', () => navLinks.classList.toggle('open'));
+
+    // Theme toggle (persist in localStorage)
+    const themeToggle = document.getElementById('themeToggle');
+    const root = document.body;
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') root.classList.add('dark');
+    const updateToggleLabel = () => { themeToggle.textContent = root.classList.contains('dark') ? '☀️' : '🌙'; };
+    updateToggleLabel();
+    themeToggle && themeToggle.addEventListener('click', () => {
+        root.classList.toggle('dark');
+        localStorage.setItem('theme', root.classList.contains('dark') ? 'dark' : 'light');
+        updateToggleLabel();
+    });
+    </script>
+</body>
+</html>

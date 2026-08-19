@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Welcome {{ username }}</h2>
+
+<h3>Helmet Details</h3>
+
+<div class="cards">
+    <div class="card total">
+        <h4>Total Helmets</h4>
+        <p>{{ total }}</p>
+    </div>
+
+    <div class="card safe-card">
+        <h4>Safe Helmets</h4>
+        <p>{{ safe }}</p>
+    </div>
+
+    <div class="card danger-card">
+        <h4>Danger Helmets</h4>
+        <p>{{ danger }}</p>
+    </div>
+</div>
+
+<br>
+
+<a class="btn simulate" href="{{ url_for('simulate') }}">
+    Simulate Sensor Data
+</a>
+
+
+
+<h3>All Helmets</h3>
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Helmet ID</th>
+        <th>Gas</th>
+        <th>Temp</th>
+        <th>Status</th>
+        <th>Battery</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="helmetsTableBody">
+      {% for helmet in helmets %}
+      <tr data-helmet-id="{{ helmet.helmet_id }}">
+        <td>{{ helmet.helmet_id }}</td>
+        <td>{{ helmet.gas_level }}</td>
+        <td>{{ helmet.temperature }}</td>
+        <td>
+          <span class="status-pill {% if helmet.status=='SAFE' %}status-safe{% elif helmet.status=='DANGER' %}status-danger{% else %}status-warning{% endif %}">
+            {{ helmet.status }}
+          </span>
+        </td>
+        <td>
+          <div class="progress">
+            <div class="progress-bar" style="width: {{ helmet.battery_level }}%">{{ helmet.battery_level }}%</div>
+          </div>
+        </td>
+        <td>
+          <form action="{{ url_for('delete_helmet', helmet_id=helmet.id) }}" method="POST" style="display:inline;">
+            <button class="delete-btn" type="submit" onclick="return confirm('Are you sure you want to delete this helmet?')">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="meta-row">
+  <div id="lastUpdated" class="last-updated">Last updated: —</div>
+</div>
+
+<!-- Helmet history modal -->
+<div id="historyModal" class="modal" aria-hidden="true">
+  <div class="modal-panel">
+    <button id="closeHistory" class="btn">Close</button>
+    <h3 id="historyTitle">Helmet history</h3>
+    <div style="height:280px;"><canvas id="historyChart"></canvas></div>
+    <div class="modal-foot">Showing <span id="historyCount">0</span> readings</div>
+  </div>
+</div>
+<hr>
+
+<h3>Helmet Analytics</h3>
+<div class="chart-row">
+  <div class="chart-box"><canvas id="gasChart"></canvas></div>
+  <div class="chart-box"><canvas id="tempChart"></canvas></div>
+  <div class="chart-box"><canvas id="batteryChart"></canvas></div>
+</div>
+
+
+
+
+
+
+<script>
+  // initial data from server-render
+  let helmets = {{ helmet_data | tojson | safe }};
+  const ctxGas = document.getElementById('gasChart').getContext('2d');
+  const ctxTemp = document.getElementById('tempChart').getContext('2d');
+  const ctxBatt = document.getElementById('batteryChart').getContext('2d');
+
+  const createBar = (ctx, label, data, color) => new Chart(ctx, {
+    type: 'bar',
+    data: { labels: helmets.map(h => h.helmet_id), datasets: [{ label, data, backgroundColor: color }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 }, scales: { y: { beginAtZero: true } } }
+  });
+
+  const gasChart = createBar(ctxGas, 'Gas Level', helmets.map(h => h.gas_level), '#60a5fa');
+  const tempChart = createBar(ctxTemp, 'Temperature', helmets.map(h => h.temperature), '#fb923c');
+  const battChart = createBar(ctxBatt, 'Battery Level', helmets.map(h => h.battery_level), '#34d399');
+
+  // update table HTML from helmet list
+  function renderTable(list) {
+    const tbody = document.getElementById('helmetsTableBody');
+    tbody.innerHTML = '';
+    list.forEach(h => {
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-helmet-id', h.helmet_id);
+      tr.innerHTML = `
+        <td>${h.helmet_id}</td>
+        <td>${h.gas_level}</td>
+        <td>${h.temperature}</td>
+        <td><span class="status-pill ${h.status==='SAFE'?'status-safe':(h.status==='DANGER'?'status-danger':'status-warning')}">${h.status}</span></td>
+        <td><div class="progress"><div class="progress-bar" style="width:${h.battery_level}%">${h.battery_level}%</div></div></td>
+        <td><form style="display:inline;" method="POST" action="/delete_helmet/${h.id}"><button class="delete-btn">Delete</button></form></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // update charts from fresh data
+  function updateCharts(list) {
+    const ids = list.map(h => h.helmet_id);
+    gasChart.data.labels = ids; gasChart.data.datasets[0].data = list.map(h => h.gas_level); gasChart.update();
+    tempChart.data.labels = ids; tempChart.data.datasets[0].data = list.map(h => h.temperature); tempChart.update();
+    battChart.data.labels = ids; battChart.data.datasets[0].data = list.map(h => h.battery_level); battChart.update();
+  }
+
+  // fetch data from API and refresh UI
+  async function fetchAndRefresh() {
+    try {
+      const res = await fetch('/api/helmets');
+      if (!res.ok) throw new Error('Network response not ok');
+      const json = await res.json();
+      const list = json.helmets || [];
+      renderTable(list);
+      updateCharts(list);
+      document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date(json.server_time).toLocaleTimeString();
+    } catch (err) {
+      console.error('Realtime update failed', err);
+    }
+  }
+
+  // initial render
+  renderTable(helmets);
+
+  // poll every 3 seconds for a realtime effect
+  setInterval(fetchAndRefresh, 3000);
+
+  // ---- helmet history modal & chart ----
+  const modal = document.getElementById('historyModal');
+  const closeHistory = document.getElementById('closeHistory');
+  const historyTitle = document.getElementById('historyTitle');
+  const historyCount = document.getElementById('historyCount');
+  const historyCtx = document.getElementById('historyChart').getContext('2d');
+  let historyChart = null;
+
+  // open modal when a table row is clicked
+  document.getElementById('helmetsTableBody').addEventListener('click', async (ev) => {
+    const tr = ev.target.closest('tr');
+    if (!tr) return;
+    const hid = tr.getAttribute('data-helmet-id');
+    if (!hid) return;
+
+    historyTitle.textContent = 'Helmet ' + hid + ' — recent history';
+    modal.setAttribute('aria-hidden', 'false');
+
+    try {
+      const r = await fetch(`/api/helmet/${tr.querySelector('form') ? tr.querySelector('form').action.split('/').pop() : ''}/readings?limit=200`);
+      const json = await r.json();
+      const readings = json.readings || [];
+      historyCount.textContent = readings.length;
+
+      const labels = readings.map(x => new Date(x.timestamp).toLocaleTimeString());
+      const gas = readings.map(x => x.gas_level);
+      const temp = readings.map(x => x.temperature);
+      const batt = readings.map(x => x.battery_level);
+
+      if (historyChart) historyChart.destroy();
+      historyChart = new Chart(historyCtx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Gas', data: gas, borderColor: '#60a5fa', fill: false, tension: 0.2 },
+            { label: 'Temp', data: temp, borderColor: '#fb923c', fill: false, tension: 0.2 },
+            { label: 'Battery', data: batt, borderColor: '#34d399', fill: false, tension: 0.2 }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+    } catch (err) {
+      console.error('Failed to load history', err);
+    }
+  });
+
+  closeHistory.addEventListener('click', () => modal.setAttribute('aria-hidden', 'true'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.setAttribute('aria-hidden', 'true'); });
+
+</script>
+
+
+
+{% endblock %}

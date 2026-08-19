@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Telemetry History</h2>
+
+<div class="meta-row" style="align-items:center; gap:12px; margin-bottom:12px;">
+  <input id="filterInput" placeholder="Filter by helmet id" style="padding:8px;border-radius:8px;border:1px solid #e6edf3; width:220px;">
+  <button id="downloadCsv" class="btn">Download CSV</button>
+  <div style="margin-left:auto; color:#64748b">Showing <span id="rowCount">0</span> readings · Server GMT: <strong>{{ server_gmt }}</strong></div>
+</div>
+
+<div class="table-wrapper">
+  <table id="historyTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Helmet ID</th>
+        <th>Gas</th>
+        <th>Temp</th>
+        <th>Battery</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in readings %}
+      <tr>
+        <td>{{ loop.revindex }}</td>
+        <td>{{ r.helmet_id }}</td>
+        <td>{{ r.gas_level }}</td>
+        <td>{{ r.temperature }}</td>
+        <td>{{ r.battery_level }}%</td>
+        <td>{{ r.timestamp.strftime('%Y-%m-%d %H:%M:%S') if r.timestamp else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const filterInput = document.getElementById('filterInput');
+  const table = document.getElementById('historyTable');
+  const rowCount = document.getElementById('rowCount');
+
+  function updateCount() {
+    const visible = Array.from(table.tBodies[0].rows).filter(r => r.style.display !== 'none').length;
+    rowCount.textContent = visible;
+  }
+
+  filterInput.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    for (const row of table.tBodies[0].rows) {
+      const id = row.cells[1].textContent.toLowerCase();
+      row.style.display = id.includes(q) ? '' : 'none';
+    }
+    updateCount();
+  });
+
+  // download visible rows to CSV
+  document.getElementById('downloadCsv').addEventListener('click', () => {
+    const rows = Array.from(table.tBodies[0].rows).filter(r => r.style.display !== 'none');
+    const csv = [ ['Helmet ID','Gas','Temp','Battery','Timestamp'] ];
+    for (const r of rows) csv.push([r.cells[1].textContent, r.cells[2].textContent, r.cells[3].textContent, r.cells[4].textContent, r.cells[5].textContent]);
+    const blob = new Blob([csv.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'helmet_history.csv'; a.click(); URL.revokeObjectURL(url);
+  });
+
+  // set initial count
+  updateCount();
+</script>
+
+{% endblock %}
